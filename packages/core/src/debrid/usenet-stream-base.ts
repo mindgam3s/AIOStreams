@@ -856,7 +856,7 @@ export abstract class UsenetStreamService implements DebridService {
 
       // Poll history until download is complete
       const pollStartTime = Date.now();
-      const itemAvailable = await this.waitForItem(expectedContentPath, expectedFolderName, category);
+      const itemAvailable = await this.waitForItem(expectedContentPath);
 
 	  if (itemAvailable) {
 		  contentPath = expectedContentPath;
