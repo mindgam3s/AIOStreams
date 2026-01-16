@@ -397,8 +397,8 @@ export class SABnzbdApi {
   
 // START change 1 - wait for item (not history!)
   async waitForItem(
-    nzoId: string,
-    category: string,
+	expectedContentPath: string,
+	webdavClient: WebDAVClient,
     timeoutMs: number = 80000,
     pollIntervalMs: number = 2000
   ): Promise<ReturnType<boolean>> {
@@ -408,23 +408,16 @@ export class SABnzbdApi {
 
 
 		// Check if content already exists at the expected path
-		const expectedContentPath = `${this.getContentPathPrefix()}/${category}/${expectedFolderName}`;
 		let contentPath: string | undefined;
-		let jobName: string | undefined;
-		let jobCategory: string | undefined;
-		let nzoId: string | undefined;
 		let alreadyExists = false;
 
 
 	    try {
-	      const stat = await this.webdavClient.stat(expectedContentPath);
+	      const stat = await webdavClient.stat(expectedContentPath);
 	      const statData = 'data' in stat ? stat.data : stat;
 	      if (statData.type === 'directory') {
 	        alreadyExists = true;
-	        contentPath = expectedContentPath;
-	        jobName = expectedFolderName;
-	        jobCategory = category;
-	        this.serviceLogger.debug(`Content already exists`, {
+	        this.logger.debug(`Content is available`, {
 	          path: expectedContentPath,
 	        });
 	      }
@@ -442,7 +435,7 @@ export class SABnzbdApi {
 	          cause: error.message,
 	        });
 	      }
-	      this.serviceLogger.debug(`Content path does not exist, will add NZB`, {
+	      this.logger.debug(`Content path does not exist, will add NZB`, {
 	        path: expectedContentPath,
 	        error: (error as Error).message,
 	      });
@@ -454,8 +447,6 @@ export class SABnzbdApi {
 		}
 		
 
-      
-
     	await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
 
@@ -466,7 +457,7 @@ export class SABnzbdApi {
         statusText: 'Gateway Timeout',
         code: 'UNKNOWN',
         headers: {},
-        body: { nzoId, category },
+        body: { expectedContentPath },
         type: 'api_error',
       }
     );
@@ -875,7 +866,7 @@ export abstract class UsenetStreamService implements DebridService {
 
       // Poll history until download is complete
       const pollStartTime = Date.now();
-      const itemAvailable = await this.api.waitForItem(nzoId, category);
+      const itemAvailable = await this.api.waitForItem(nzoId, category, expectedContentPath, this.webdavClient);
 
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
