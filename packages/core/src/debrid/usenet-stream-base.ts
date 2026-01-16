@@ -722,7 +722,6 @@ export abstract class UsenetStreamService implements DebridService {
 // START change 1 - wait for item (not history!)
   public async waitForItem(
 	expectedContentPath: string,
-	webdavClient: WebDAVClient,
     timeoutMs: number = 80000,
     pollIntervalMs: number = 2000
   ): Promise<boolean> {
@@ -737,7 +736,7 @@ export abstract class UsenetStreamService implements DebridService {
 
 
 	    try {
-	      const stat = await webdavClient.stat(expectedContentPath);
+	      const stat = await this.webdavClient.stat(expectedContentPath);
 	      const statData = 'data' in stat ? stat.data : stat;
 	      if (statData.type === 'directory') {
 	        alreadyExists = true;
@@ -864,7 +863,7 @@ export abstract class UsenetStreamService implements DebridService {
 
       // Poll history until download is complete
       const pollStartTime = Date.now();
-      const itemAvailable = await this.waitForItem(nzoId, category, expectedContentPath, this.webdavClient);
+      const itemAvailable = await this.waitForItem(expectedContentPath);
 
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
