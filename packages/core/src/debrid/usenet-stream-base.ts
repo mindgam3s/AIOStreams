@@ -740,7 +740,7 @@ export abstract class UsenetStreamService implements DebridService {
 	      const statData = 'data' in stat ? stat.data : stat;
 	      if (statData.type === 'directory') {
 	        alreadyExists = true;
-	        this.serviceLogger.debug(`Content is available`, {
+	        this.serviceLogger.debug(`DEBUG mind: Content is available`, {
 	          path: expectedContentPath,
 	        });
 	      }
@@ -758,10 +758,6 @@ export abstract class UsenetStreamService implements DebridService {
 	          cause: error.message,
 	        });
 	      }
-	      this.serviceLogger.debug(`Content path does not exist, will add NZB`, {
-	        path: expectedContentPath,
-	        error: (error as Error).message,
-	      });
 	    }
 
 
