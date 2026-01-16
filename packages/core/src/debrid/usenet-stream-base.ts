@@ -719,66 +719,68 @@ export abstract class UsenetStreamService implements DebridService {
     return result;
   }
 
-// START change 1 - wait for item (not history!)
+
+// wait for item (not history!)
   public async waitForItem(
 	expectedContentPath: string,
-    timeoutMs: number = 80000,
-    pollIntervalMs: number = 2000
+	timeoutMs: number = 80000,
+	pollIntervalMs: number = 2000
   ): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
+	const deadline = Date.now() + timeoutMs;
 
-    while (Date.now() < deadline) {
+	let contentAvailable = false;
+	  
+	// wait for content to be available until deadline is reached
+	while (Date.now() < deadline) {
 
-		// Check if content already exists at the expected path
-		let alreadyExists = false;
-
-	    try {
-	      const stat = await this.webdavClient.stat(expectedContentPath);
-	      const statData = 'data' in stat ? stat.data : stat;
-	      if (statData.type === 'directory') {
-	        alreadyExists = true;
-	        this.serviceLogger.debug(`DEBUG mind: Content is available`, {
-	          path: expectedContentPath,
-	        });
-	      }
-	    } catch (error: any) {
-	      // if error is a 401, rethrow as DebridError
-	      const status = typeof error.status === 'number' ? error.status : 500;
-	      if (status === 401) {
-	        throw new DebridError(`Could not access WebDAV: Unauthorized`, {
-	          statusCode: 401,
-	          statusText: 'Unauthorized',
-	          code: 'UNAUTHORIZED',
-	          headers: {},
-	          body: null,
-	          type: 'api_error',
-	          cause: error.message,
-	        });
-	      }
+		try {
+			const stat = await this.webdavClient.stat(expectedContentPath);
+			const statData = 'data' in stat ? stat.data : stat;
+			if (statData.type === 'directory') {
+				contentAvailable = true;
+			}
+		} catch (error: any) {
+			// if error is a 401, rethrow as DebridError
+			const status = typeof error.status === 'number' ? error.status : 500;
+			if (status === 401) {
+				throw new DebridError(`Could not access WebDAV: Unauthorized`, {
+					statusCode: 401,
+					statusText: 'Unauthorized',
+					code: 'UNAUTHORIZED',
+					headers: {},
+					body: null,
+					type: 'api_error',
+					cause: error.message,
+				});
+			}
 	    }
 
-
-		if (alreadyExists) {
+		// content is available, can return
+		if (contentAvailable) {
+			this.serviceLogger.debug(`Content is now available`, {
+				path: expectedContentPath,
+			});
+			
 			return true;
 		}
-		
 
-    	await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-    }
+		await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+	}
 
-    throw new DebridError(
-      'Timeout while waiting for NZB to become streamable',
-      {
-        statusCode: 504,
-        statusText: 'Gateway Timeout',
-        code: 'UNKNOWN',
-        headers: {},
-        body: { expectedContentPath },
-        type: 'api_error',
-      }
-    );
+	// deadline reached, throw error
+	throw new DebridError(
+		'Timeout while waiting for NZB to become streamable',
+		{
+			statusCode: 504,
+			statusText: 'Gateway Timeout',
+			code: 'UNKNOWN',
+			headers: {},
+			body: { expectedContentPath },
+			type: 'api_error',
+		}
+	);
   }
-// END change 1
+
 	
   protected async _resolve(
     playbackInfo: PlaybackInfo & { type: 'usenet' },
@@ -854,10 +856,20 @@ export abstract class UsenetStreamService implements DebridService {
       );
       nzoId = addResult.nzoId;
 
-      // Poll history until download is complete
       const pollStartTime = Date.now();
+		
+//      // Poll history until download is complete
+//      const slot = await this.api.waitForHistorySlot(nzoId, category);
+
+//	  // Use slot.storage as source of truth for the content path
+//      jobName = slot.storage ? basename(slot.storage) : slot.name || filename;
+//      jobCategory = slot.category || category;
+//      contentPath = `${this.getContentPathPrefix()}/${jobCategory}/${jobName}`;
+		
+      // Poll expectedContentPath until download is complete
       const itemAvailable = await this.waitForItem(expectedContentPath);
 
+	  // set expected values
 	  if (itemAvailable) {
 		  contentPath = expectedContentPath;
 		  jobName = expectedFolderName;
