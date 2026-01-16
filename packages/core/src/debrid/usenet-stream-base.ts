@@ -401,7 +401,7 @@ export class SABnzbdApi {
 	webdavClient: WebDAVClient,
     timeoutMs: number = 80000,
     pollIntervalMs: number = 2000
-  ): Promise<ReturnType<boolean>> {
+  ): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
