@@ -729,11 +729,8 @@ export abstract class UsenetStreamService implements DebridService {
 
     while (Date.now() < deadline) {
 
-
 		// Check if content already exists at the expected path
-		let contentPath: string | undefined;
 		let alreadyExists = false;
-
 
 	    try {
 	      const stat = await this.webdavClient.stat(expectedContentPath);
@@ -859,8 +856,14 @@ export abstract class UsenetStreamService implements DebridService {
 
       // Poll history until download is complete
       const pollStartTime = Date.now();
-      const itemAvailable = await this.waitForItem(expectedContentPath);
+      const itemAvailable = await this.waitForItem(expectedContentPath, expectedFolderName, category);
 
+	  if (itemAvailable) {
+		  contentPath = expectedContentPath;
+		  jobName = expectedFolderName;
+	      jobCategory = category;
+	  }
+		
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
         jobName,
