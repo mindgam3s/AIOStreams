@@ -393,6 +393,86 @@ export class SABnzbdApi {
       }
     );
   }
+  
+  
+// START change 1 - wait for item (not history!)
+  async waitForItem(
+    nzoId: string,
+    category: string,
+    timeoutMs: number = 80000,
+    pollIntervalMs: number = 2000
+  ): Promise<ReturnType<boolean> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+
+
+		// Check if content already exists at the expected path
+		const expectedContentPath = `${this.getContentPathPrefix()}/${category}/${expectedFolderName}`;
+		let contentPath: string | undefined;
+		let jobName: string | undefined;
+		let jobCategory: string | undefined;
+		let nzoId: string | undefined;
+		let alreadyExists = false;
+
+
+	    try {
+	      const stat = await this.webdavClient.stat(expectedContentPath);
+	      const statData = 'data' in stat ? stat.data : stat;
+	      if (statData.type === 'directory') {
+	        alreadyExists = true;
+	        contentPath = expectedContentPath;
+	        jobName = expectedFolderName;
+	        jobCategory = category;
+	        this.serviceLogger.debug(`Content already exists`, {
+	          path: expectedContentPath,
+	        });
+	      }
+	    } catch (error: any) {
+	      // if error is a 401, rethrow as DebridError
+	      const status = typeof error.status === 'number' ? error.status : 500;
+	      if (status === 401) {
+	        throw new DebridError(`Could not access WebDAV: Unauthorized`, {
+	          statusCode: 401,
+	          statusText: 'Unauthorized',
+	          code: 'UNAUTHORIZED',
+	          headers: {},
+	          body: null,
+	          type: 'api_error',
+	          cause: error.message,
+	        });
+	      }
+	      this.serviceLogger.debug(`Content path does not exist, will add NZB`, {
+	        path: expectedContentPath,
+	        error: (error as Error).message,
+	      });
+	    }
+
+
+		if (alreadyExists) {
+			return true;
+		}
+		
+
+      
+
+    	await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    throw new DebridError(
+      'Timeout while waiting for NZB to become streamable',
+      {
+        statusCode: 504,
+        statusText: 'Gateway Timeout',
+        code: 'UNKNOWN',
+        headers: {},
+        body: { nzoId, category },
+        type: 'api_error',
+      }
+    );
+  }
+// END change 1
+
 }
 
 /**
@@ -795,12 +875,7 @@ export abstract class UsenetStreamService implements DebridService {
 
       // Poll history until download is complete
       const pollStartTime = Date.now();
-      const slot = await this.api.waitForHistorySlot(nzoId, category);
-
-      // Use slot.storage as source of truth for the content path
-      jobName = slot.storage ? basename(slot.storage) : slot.name || filename;
-      jobCategory = slot.category || category;
-      contentPath = `${this.getContentPathPrefix()}/${jobCategory}/${jobName}`;
+      const itemAvailable = await this.api.waitForItem(nzoId, category);
 
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
