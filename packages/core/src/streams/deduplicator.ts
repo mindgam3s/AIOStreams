@@ -167,6 +167,9 @@ class StreamDeduplicator {
     }
 
 // START change 5 - dedupt library/non-library separately
+
+    for (const group of finalDuplicateGroupsMap.values()) {
+
       const libraryStreams = group.filter(s => s.library);
       const nonLibraryStreams = group.filter(s => !s.library);
 
