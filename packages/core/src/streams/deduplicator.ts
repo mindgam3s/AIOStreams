@@ -144,7 +144,10 @@ class StreamDeduplicator {
       }
     }
     // Group actual stream objects by their DSU representative ID
-    const idToStreamMap = new Map(streams.map((s) => [s.id, s])); // For quick lookup
+
+// START change 7 - remove duplicate 'const idToStreamMap'
+// END change 7
+
     const finalDuplicateGroupsMap = new Map<string, ParsedStream[]>(); // Maps representative ID to stream objects
 
     for (const stream of streams) {
