@@ -123,7 +123,7 @@ export class SABnzbdApi {
       string | undefined | number | boolean | null | string[]
     >,
     schema: T,
-    timeoutMs: number = 80000
+    timeoutMs: number = 360000
   ): Promise<{
     data: z.infer<T>;
     statusCode: number;
