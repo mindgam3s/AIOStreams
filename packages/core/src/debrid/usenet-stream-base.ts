@@ -645,7 +645,7 @@ export abstract class UsenetStreamService implements DebridService {
         // get contents safely and don't throw if not existent
         const safeGetContents = async (path: string): Promise<FileStat[]> => {
           try {
-            return (await this.listWebdavFolders(path) as FileStat[];
+            return (await this.listWebdavFolders(path)) as FileStat[];
           } catch (error: any) {
             const status = typeof error.status === 'number' ? error.status : 500;
             if (status === 404) {
