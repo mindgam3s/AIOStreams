@@ -639,8 +639,8 @@ export abstract class UsenetStreamService implements DebridService {
         const historyPromise = this.api.history({ limit: 1000 });
 
 // START change 1
-        const moviesPath = `${this.getContentPathPrefix()}/${Category.TV}`
-        const tvPath = `${this.getContentPathPrefix()}/${Category.MOVIES}`
+        const moviesPath = `${this.getContentPathPrefix()}/${Category.MOVIES}`
+        const tvPath = `${this.getContentPathPrefix()}/${Category.TV}`
 
         // get contents safely and don't throw if not existent
         const safeGetContents = async (path: string): Promise<FileStat[]> => {
