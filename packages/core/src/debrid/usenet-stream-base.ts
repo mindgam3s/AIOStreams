@@ -639,15 +639,21 @@ export abstract class UsenetStreamService implements DebridService {
         const historyPromise = this.api.history({ limit: 1000 });
 
 // START change 1
-        const moviesPath = `${this.getContentPathPrefix()}/${Category.MOVIES}`
-        const tvPath = `${this.getContentPathPrefix()}/${Category.TV}`
-
-        // get contents safely and don't throw if not existent
+        const moviesPath = `${this.getContentPathPrefix()}/${Category.MOVIES}`;
+        const tvPath = `${this.getContentPathPrefix()}/${Category.TV}`;
+        
         const safeGetContents = async (path: string): Promise<FileStat[]> => {
           try {
-            return (await this.listWebdavFolders(path)) as FileStat[];
+            return await Promise.resolve(
+              this.listWebdavFolders(path)
+            ) as FileStat[];
           } catch (error: any) {
-            const status = typeof error.status === 'number' ? error.status : 500;
+            const status =
+              error?.status ??
+              error?.statusCode ??
+              error?.response?.status ??
+              error?.response?.statusCode;
+        
             if (status === 404) {
               return [];
             }
