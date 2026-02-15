@@ -945,31 +945,17 @@ export abstract class UsenetStreamService implements DebridService {
       );
       nzoId = addResult.nzoId;
 
-      // Poll history until download is complete
+// START change 2 - use function waitForItem
       const pollStartTime = Date.now();
-      let slot: ReturnType<typeof transformHistorySlot>;
-      try {
-        slot = await this.api.waitForHistorySlot(nzoId, category);
-      } catch (error) {
-        if (!(error instanceof DebridError)) {
-          throw error;
-        }
-        UsenetStreamService.resolveCache.set(
-          cacheKey,
-          {
-            message: error.message,
-            code: error.code,
-          },
-          Env.BUILTIN_DEBRID_RESOLVE_ERROR_CACHE_TTL,
-          true
-        );
-        throw error;
-      }
 
-      // Use slot.storage as source of truth for the content path
-      jobName = slot.storage ? basename(slot.storage) : slot.name || filename;
-      jobCategory = slot.category || category;
-      contentPath = `${this.getContentPathPrefix()}/${jobCategory}/${jobName}`;
+      const itemAvailable = await this.waitForItem(expectedContentPath);
+
+  	  // set expected values
+  	  if (itemAvailable) {
+  		  contentPath = expectedContentPath;
+  		  jobName = expectedFolderName;
+  	      jobCategory = category;
+  	  }
 
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
@@ -979,6 +965,7 @@ export abstract class UsenetStreamService implements DebridService {
         time: getTimeTakenSincePoint(pollStartTime),
       });
     }
+// END change 2
 
     // Ensure we have a content path
     if (!contentPath || !jobName || !jobCategory) {
