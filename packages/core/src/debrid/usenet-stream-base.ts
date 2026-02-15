@@ -945,15 +945,46 @@ export abstract class UsenetStreamService implements DebridService {
       );
       nzoId = addResult.nzoId;
 
-      // Poll history until download is complete
+// START change 2 - robust history + content validation with cleared history support
       const pollStartTime = Date.now();
-      let slot: ReturnType<typeof transformHistorySlot>;
+      
+      let slot: ReturnType<typeof transformHistorySlot> | undefined;
+      let historyCleared = false;
+      
       try {
         slot = await this.api.waitForHistorySlot(nzoId, category);
       } catch (error) {
-        if (!(error instanceof DebridError)) {
+        if (error instanceof DebridError) {
+          // If history item no longer exists, it may have been auto-cleared after success
+          if (error.code === "HISTORY_NOT_FOUND") {
+            historyCleared = true;
+          } else {
+            // Cache real failure errors
+            UsenetStreamService.resolveCache.set(
+              cacheKey,
+              {
+                message: error.message,
+                code: error.code,
+              },
+              Env.BUILTIN_DEBRID_RESOLVE_ERROR_CACHE_TTL,
+              true
+            );
+            throw error;
+          }
+        } else {
           throw error;
         }
+      }
+      
+      // If history exists and explicitly failed → throw
+      if (slot && (slot.status === "FAILED" || slot.status === "Deleted")) {
+        const errorMessage =
+          slot.failMessage ||
+          slot.failure ||
+          `NZB download failed for ${nzoId}`;
+      
+        const error = new DebridError(errorMessage, "NZB_FAILED");
+      
         UsenetStreamService.resolveCache.set(
           cacheKey,
           {
@@ -963,22 +994,45 @@ export abstract class UsenetStreamService implements DebridService {
           Env.BUILTIN_DEBRID_RESOLVE_ERROR_CACHE_TTL,
           true
         );
+      
         throw error;
       }
-
-      // Use slot.storage as source of truth for the content path
-      jobName = slot.storage ? basename(slot.storage) : slot.name || filename;
-      jobCategory = slot.category || category;
-      contentPath = `${this.getContentPathPrefix()}/${jobCategory}/${jobName}`;
-
+      
+      // Determine expected content path
+      // If history was cleared, fall back to expected naming
+      const expectedFolderName =
+        slot?.storage
+          ? basename(slot.storage)
+          : slot?.name || filename;
+      
+      const expectedCategory = slot?.category || category;
+      
+      const expectedContentPath = `${this.getContentPathPrefix()}/${expectedCategory}/${expectedFolderName}`;
+      
+      // Final source of truth → filesystem
+      const itemAvailable = await this.waitForItem(expectedContentPath);
+      
+      if (!itemAvailable) {
+        throw new DebridError(
+          `Download completed but item not found at ${expectedContentPath}`,
+          "CONTENT_NOT_FOUND"
+        );
+      }
+      
+      // Set resolved values
+      contentPath = expectedContentPath;
+      jobName = expectedFolderName;
+      jobCategory = expectedCategory;
+      
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
         jobName,
         jobCategory,
         contentPath,
+        historyCleared,
         time: getTimeTakenSincePoint(pollStartTime),
       });
-    }
+// END change 2
 
     // Ensure we have a content path
     if (!contentPath || !jobName || !jobCategory) {
