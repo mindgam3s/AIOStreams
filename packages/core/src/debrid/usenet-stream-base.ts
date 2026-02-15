@@ -1033,6 +1033,7 @@ export abstract class UsenetStreamService implements DebridService {
         time: getTimeTakenSincePoint(pollStartTime),
       });
 // END change 2
+    }
 
     // Ensure we have a content path
     if (!contentPath || !jobName || !jobCategory) {
