@@ -796,6 +796,69 @@ export abstract class UsenetStreamService implements DebridService {
     return result;
   }
 
+// START change 1 - add function to wait for item in content path instead of history
+// wait for item (not history!)
+  public async waitForItem(
+  	expectedContentPath: string,
+  	timeoutMs: number = 80000,
+  	pollIntervalMs: number = 2000
+  ): Promise<boolean> {
+  	const deadline = Date.now() + timeoutMs;
+  
+  	let contentAvailable = false;
+  
+  	// wait for content to be available until deadline is reached
+  	while (Date.now() < deadline) {
+  
+  		try {
+  			const stat = await this.webdavClient.stat(expectedContentPath);
+  			const statData = 'data' in stat ? stat.data : stat;
+  			if (statData.type === 'directory') {
+  				contentAvailable = true;
+  			}
+  		} catch (error: any) {
+  			// if error is a 401, rethrow as DebridError
+  			const status = typeof error.status === 'number' ? error.status : 500;
+  			if (status === 401) {
+  				throw new DebridError(`Could not access WebDAV: Unauthorized`, {
+  					statusCode: 401,
+  					statusText: 'Unauthorized',
+  					code: 'UNAUTHORIZED',
+  					headers: {},
+  					body: null,
+  					type: 'api_error',
+  					cause: error.message,
+  				});
+  			}
+  	    }
+  
+  		// content is available, can return
+  		if (contentAvailable) {
+  			this.serviceLogger.debug(`Content is now available`, {
+  				path: expectedContentPath,
+  			});
+  
+  			return true;
+  		}
+  
+  		await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  	}
+  
+  	// deadline reached, throw error
+  	throw new DebridError(
+  		'Timeout while waiting for NZB to become streamable',
+  		{
+  			statusCode: 504,
+  			statusText: 'Gateway Timeout',
+  			code: 'UNKNOWN',
+  			headers: {},
+  			body: { expectedContentPath },
+  			type: 'api_error',
+  		}
+  	);
+  }
+// END change 1
+
   protected async _resolve(
     playbackInfo: PlaybackInfo & { type: 'usenet' },
     filename: string
