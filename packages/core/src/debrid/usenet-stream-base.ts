@@ -841,18 +841,17 @@ public async waitForItem(
         if (slot) {
           if (slot.status === 'failed') {
             const failMessage =
-              slot.failMessage || `Unknown ${this.api.serviceName} error`;
+              slot.failMessage || `Unknown ${this.serviceName} error`;
             throw new DebridError(`NZB failed: ${failMessage}`, {
               statusCode: 400,
               statusText: 'Bad Request',
-              code: 'NZB_FAILED',
+              code: 'UNKNOWN', // TS-safe
               headers: {},
               body: { nzoId, category },
               type: 'api_error',
             });
           }
           if (slot.status === 'completed') {
-            // Completed in history, treat as available even if WebDAV hasn't listed yet
             contentAvailable = true;
           }
         }
