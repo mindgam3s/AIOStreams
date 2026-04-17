@@ -980,18 +980,21 @@ public async waitForItem(
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
 
-  let contentAvailable = false;
-
   while (Date.now() < deadline) {
     // 1 - Check WebDAV for content
     try {
       const stat = await this.webdavClient.stat(expectedContentPath);
       const statData = 'data' in stat ? stat.data : stat;
+
       if (statData.type === 'directory') {
-        contentAvailable = true;
+        this.serviceLogger.debug(`Content is now available`, {
+          path: expectedContentPath,
+        });
+        return true;
       }
     } catch (error: any) {
       const status = typeof error.status === 'number' ? error.status : 500;
+
       if (status === 401) {
         throw new DebridError(`Could not access WebDAV: Unauthorized`, {
           statusCode: 401,
@@ -1003,47 +1006,58 @@ public async waitForItem(
           cause: error.message,
         });
       }
-      // Ignore other errors, continue polling
+      // Ignore other errors (e.g. 404 while not yet created)
     }
 
-    // 2 - Check history slot for explicit failure (if nzoId provided)
+    // 2 - Check history for failure / completion if nzoId provided
     if (nzoId && category) {
       try {
-        const history = await this.api.history({ nzoIds: [nzoId], category });
+        const history = await this.api.history({
+          nzoIds: [nzoId],
+          category,
+        });
+
         const slot = history.slots.find((entry) => entry.nzoId === nzoId);
 
         if (slot) {
-          if (slot.status === 'failed') {
-            const failMessage =
-              slot.failMessage || `Unknown ${this.serviceName} error`;
+          const status = slot.status?.toLowerCase();
+
+          if (status === 'failed') {
+            const failMessage = slot.failMessage || 'Unknown failure';
+
+            this.serviceLogger.warn(`NZB failed during waitForItem`, {
+              nzoId,
+              category,
+              failMessage,
+            });
+
             throw new DebridError(`NZB failed: ${failMessage}`, {
               statusCode: 400,
               statusText: 'Bad Request',
               code: 'UNKNOWN',
               headers: {},
-              body: { nzoId, category },
+              body: { nzoId, category, failMessage },
               type: 'api_error',
             });
           }
-          if (slot.status === 'completed') {
-            // Completed in history, treat as available even if WebDAV hasn't listed yet
-            contentAvailable = true;
+
+          if (status === 'completed') {
+            this.serviceLogger.debug(`History shows completed`, {
+              nzoId,
+            });
+            return true;
           }
         }
       } catch (error: any) {
-        // Ignore history errors (e.g., timeout or cleared history), rely on WebDAV
-        this.serviceLogger.debug(
-          `History check failed, will continue polling WebDAV`,
-          { nzoId, category, error: (error as Error).message }
-        );
-      }
-    }
+        // Only swallow non-DebridError (e.g. API hiccups)
+        if (error instanceof DebridError) throw error;
 
-    if (contentAvailable) {
-      this.serviceLogger.debug(`Content is now available`, {
-        path: expectedContentPath,
-      });
-      return true;
+        this.serviceLogger.debug(`History API check failed, continuing`, {
+          nzoId,
+          category,
+          error: error?.message ?? String(error),
+        });
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -1061,7 +1075,7 @@ public async waitForItem(
     }
   );
 }
-// END change 1
+// END change 1 -----------------------------------------------------------------------------------
 
   protected async _resolve(
     playbackInfo: PlaybackInfo & { type: 'usenet' },
