@@ -975,7 +975,7 @@ public async waitForItem(
   expectedContentPath: string,
   nzoId?: string,
   category?: string,
-  timeoutMs: number = 80000,
+  timeoutMs: number = 140000,
   pollIntervalMs: number = 2000
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
