@@ -969,6 +969,113 @@ export abstract class UsenetStreamService implements UsenetDebridService {
     return result;
   }
 
+// START change 1 - add function to wait for item in content path instead of history, with failed item check in history
+public async waitForItem(
+  expectedContentPath: string,
+  nzoId?: string,
+  category?: string,
+  timeoutMs: number = 140000,
+  pollIntervalMs: number = 2000
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    // 1 - Check WebDAV for content
+    try {
+      const stat = await this.webdavClient.stat(expectedContentPath);
+      const statData = 'data' in stat ? stat.data : stat;
+
+      if (statData.type === 'directory') {
+        this.serviceLogger.debug(`Content is now available`, {
+          path: expectedContentPath,
+        });
+        return true;
+      }
+    } catch (error: any) {
+      const status = typeof error.status === 'number' ? error.status : 500;
+
+      if (status === 401) {
+        throw new DebridError(`Could not access WebDAV: Unauthorized`, {
+          statusCode: 401,
+          statusText: 'Unauthorized',
+          code: 'UNAUTHORIZED',
+          headers: {},
+          body: null,
+          type: 'api_error',
+          cause: error.message,
+        });
+      }
+      // Ignore other errors (e.g. 404 while not yet created)
+    }
+
+    // 2 - Check history for failure / completion if nzoId provided
+    if (nzoId && category) {
+      try {
+        const history = await this.api.history({
+          nzoIds: [nzoId],
+          category,
+        });
+
+        const slot = history.slots.find((entry) => entry.nzoId === nzoId);
+
+        if (slot) {
+          const status = slot.status?.toLowerCase();
+
+          if (status === 'failed') {
+            const failMessage = slot.failMessage || 'Unknown failure';
+
+            this.serviceLogger.warn(`NZB failed during waitForItem`, {
+              nzoId,
+              category,
+              failMessage,
+            });
+
+            throw new DebridError(`NZB failed: ${failMessage}`, {
+              statusCode: 400,
+              statusText: 'Bad Request',
+              code: 'UNKNOWN',
+              headers: {},
+              body: { nzoId, category, failMessage },
+              type: 'api_error',
+            });
+          }
+
+          if (status === 'completed') {
+            this.serviceLogger.debug(`History shows completed`, {
+              nzoId,
+            });
+            return true;
+          }
+        }
+      } catch (error: any) {
+        // Only swallow non-DebridError (e.g. API hiccups)
+        if (error instanceof DebridError) throw error;
+
+        this.serviceLogger.debug(`History API check failed, continuing`, {
+          nzoId,
+          category,
+          error: error?.message ?? String(error),
+        });
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new DebridError(
+    'Timeout while waiting for NZB to become streamable',
+    {
+      statusCode: 504,
+      statusText: 'Gateway Timeout',
+      code: 'UNKNOWN',
+      headers: {},
+      body: { expectedContentPath, nzoId, category },
+      type: 'api_error',
+    }
+  );
+}
+// END change 1 -----------------------------------------------------------------------------------
+
   protected async _resolve(
     playbackInfo: PlaybackInfo & { type: 'usenet' },
     filename: string
@@ -1072,35 +1179,17 @@ export abstract class UsenetStreamService implements UsenetDebridService {
       }
     }
 
-    // If we added the NZB (not already existing), wait for it to complete
-    if (!alreadyExists && nzoId) {
-      // Poll history until download is complete
+// START change 2 - use function waitForItem
       const pollStartTime = Date.now();
-      let slot: ReturnType<typeof transformHistorySlot>;
-      try {
-        slot = await this.api.waitForHistorySlot(
-          nzoId,
-          category,
-          this.maxWaitTime,
-          this.pollInterval
-        );
-      } catch (error) {
-        if (!(error instanceof DebridError)) {
-          throw error;
-        }
-        DebridFailureCache.mark(
-          this.serviceName,
-          'usenet',
-          hashNzbUrl(nzb, false),
-          error
-        ).catch(() => {});
-        throw error;
-      }
 
-      // Use slot.storage as source of truth for the content path
-      jobName = slot.storage ? basename(slot.storage) : slot.name || filename;
-      jobCategory = slot.category || category;
-      contentPath = `${this.getContentPathPrefix()}/${jobCategory}/${jobName}`;
+      const itemAvailable = await this.waitForItem(expectedContentPath, nzoId, category);
+
+  	  // set expected values
+  	  if (itemAvailable) {
+  		  contentPath = expectedContentPath;
+  		  jobName = expectedFolderName;
+  	    jobCategory = category;
+  	  }
 
       this.serviceLogger.debug(`NZB download completed`, {
         nzoId,
@@ -1109,7 +1198,7 @@ export abstract class UsenetStreamService implements UsenetDebridService {
         contentPath,
         time: getTimeTakenSincePoint(pollStartTime),
       });
-    }
+// END change 2
 
     // Ensure we have a content path
     if (!contentPath || !jobName || !jobCategory) {
