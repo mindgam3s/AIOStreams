@@ -785,7 +785,10 @@ const TOP_LEVEL_OPTION_DETAILS: Record<
   | 'tvdbApiKey'
   | 'topPosterApiKey'
   | 'aioratingsApiKey'
-  | 'aioratingsProfileId',
+  | 'aioratingsProfileId'
+  | 'openposterdbApiKey'
+  | 'openposterdbUrl'
+  | 'openposterdbParameters',
   {
     name: string;
     description: string;
@@ -826,6 +829,21 @@ const TOP_LEVEL_OPTION_DETAILS: Record<
     description:
       'Use "default" for the default profile, or enter a custom profile UUID from your AIOratings dashboard.',
   },
+  openposterdbApiKey: {
+    name: 'OpenPosterDB API Key',
+    description:
+      'Get your API key from [here](https://openposterdb.com) for posters with ratings. Use `t0-free-rpdb` for the free public instance.',
+  },
+  openposterdbUrl: {
+    name: 'OpenPosterDB URL',
+    description:
+      'Custom base URL for a self-hosted OpenPosterDB instance. Leave empty to use the default public instance.',
+  },
+  openposterdbParameters: {
+    name: 'OpenPosterDB Custom Parameters',
+    description:
+      'Optional query string (without the leading `?`) appended to every poster to customise it, e.g. `ratings_limit=2&badge_size=l&position=br`.',
+  },
 };
 
 export const DEDUPLICATOR_KEYS = [
@@ -838,6 +856,11 @@ export const DEDUPLICATOR_LIBRARY_BEHAVIOURS = [
   'ignore',
   'prefer',
   'exclusive',
+] as const;
+
+export const DEDUPLICATOR_TIEBREAKERS = [
+  'torrent_seeders',
+  'usenet_age',
 ] as const;
 
 export const SMART_DETECT_ATTRIBUTES = [
@@ -1007,6 +1030,7 @@ const ENCODES = [
   'AV1',
   'HEVC',
   'AVC',
+  'VC-1',
   'XviD',
   'DivX',
   // 'H-OU',
@@ -1053,12 +1077,6 @@ export const MAX_SEEDERS = 1000;
 
 export const MIN_AGE_HOURS = 0;
 export const MAX_AGE_HOURS = 6480 * 24; // 6480 days (approx 18 years)
-
-export const DEFAULT_POSTERS = [
-  'aHR0cHM6Ly93d3cucG5nbWFydC5jb20vZmlsZXMvMTEvUmlja3JvbGxpbmctUE5HLVBpYy5wbmc=',
-];
-
-export const DEFAULT_YT_ID = 'eHZGWmpvNVBnRzA=';
 
 export const SORT_CRITERIA_DETAILS: Record<
   (typeof SORT_CRITERIA)[number],

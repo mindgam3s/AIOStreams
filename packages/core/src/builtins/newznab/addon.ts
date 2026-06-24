@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ParsedId } from '../../utils/id-parser.js';
-import { constants, createLogger, Env } from '../../utils/index.js';
+import { appConfig, constants, createLogger } from '../../utils/index.js';
 import {
   Torrent,
   NZB,
@@ -93,7 +93,7 @@ export class NewznabAddon extends BaseNabAddon<NewznabAddonConfig, NewznabApi> {
       return undefined;
     }
 
-    const endpoint = Env.ZYCLOPS_HEALTH_PROXY_ENDPOINT;
+    const endpoint = appConfig.nzbProxy.zyclopsHealthProxyEndpoint;
     const path = '/api';
     const extraParams: Record<string, string | number | boolean> = {};
 
@@ -192,6 +192,7 @@ export class NewznabAddon extends BaseNabAddon<NewznabAddonConfig, NewznabApi> {
         age: age,
         title: result.title,
         indexer:
+          result.newznab?.sourceIndexerName?.toString() ??
           result.newznab?.hydraIndexerName?.toString() ??
           meta.capabilities.server.title,
         size:
@@ -210,10 +211,10 @@ export class NewznabAddon extends BaseNabAddon<NewznabAddonConfig, NewznabApi> {
       nzbs.push(nzb);
     }
 
-    if (this.userData.proxyAuth || Env.NZB_PROXY_PUBLIC_ENABLED) {
+    if (this.userData.proxyAuth || appConfig.nzbProxy.publicEnabled) {
       const auth = this.userData.proxyAuth
         ? this.userData.proxyAuth
-        : `${constants.PUBLIC_NZB_PROXY_USERNAME}:${Env.AIOSTREAMS_AUTH.get(
+        : `${constants.PUBLIC_NZB_PROXY_USERNAME}:${appConfig.bootstrap.auth?.get(
             constants.PUBLIC_NZB_PROXY_USERNAME
           )}`;
       try {
@@ -223,7 +224,7 @@ export class NewznabAddon extends BaseNabAddon<NewznabAddonConfig, NewznabApi> {
       }
       const proxy = createProxy({
         id: constants.BUILTIN_SERVICE,
-        url: Env.BASE_URL,
+        url: appConfig.bootstrap.baseUrl,
         credentials: auth,
       });
       const nzbsToProxy = nzbs.map((nzb) => ({

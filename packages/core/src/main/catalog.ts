@@ -4,7 +4,6 @@ import {
   ExtrasParser,
   getSimpleTextHash,
   maskSensitiveInfo,
-  constants,
 } from '../utils/index.js';
 import { Wrapper } from './wrapper.js';
 import { createPosterService } from '../poster/index.js';
@@ -113,8 +112,14 @@ export async function fetchRawCatalogItems(
       catalogId,
       extrasString
     );
-    logger.info(
-      `Received catalog ${catalogId} of type ${actualType} from ${addon.name} in ${getTimeTakenSincePoint(start)}`
+    logger.debug(
+      {
+        addon: addon.name,
+        catalogId,
+        type: actualType,
+        took: getTimeTakenSincePoint(start),
+      },
+      'received catalog'
     );
     return { success: true, items: catalog };
   } catch (error) {
@@ -183,15 +188,6 @@ export async function applyPosterModifications(
         item.poster = posterUrl;
       }
 
-      if (ctx.userData.enhancePosters && Math.random() < 0.2) {
-        item.poster = Buffer.from(
-          constants.DEFAULT_POSTERS[
-            Math.floor(Math.random() * constants.DEFAULT_POSTERS.length)
-          ],
-          'base64'
-        ).toString('utf-8');
-      }
-
       if (item.links) {
         item.links = convertDiscoverDeepLinks(ctx, item.links);
       }
@@ -222,18 +218,16 @@ export async function applyCatalogModifications(
   const applyShuffle = modification?.shuffle && !isSearch && shuffleCacheKey;
   const applyReverse = !applyShuffle && modification?.reverse && !isSearch;
 
-  logger.debug(`Applying catalog modifications`, {
-    catalogId,
-    type,
-    modificationFound: !!modification,
-    posterService:
-      modification?.usePosterService === true &&
-      ctx.userData.posterService !== 'none'
-        ? ctx.userData.posterService
-        : false,
-    shuffle: !!applyShuffle,
-    reverse: !!applyReverse,
-  });
+  logger.debug(
+    {
+      catalogId,
+      type,
+      modificationFound: !!modification,
+      shuffle: !!applyShuffle,
+      reverse: !!applyReverse,
+    },
+    'applying catalog modifications'
+  );
 
   if (applyShuffle) {
     const cachedShuffle = await shuffleCache.get(shuffleCacheKey);
@@ -373,7 +367,7 @@ export async function getMergedCatalog(
   const mergedCatalog = ctx.userData.mergedCatalogs?.find((mc) => mc.id === id);
 
   if (!mergedCatalog) {
-    logger.error(`Merged catalog ${id} not found`);
+    logger.error({ id }, 'merged catalog not found');
     return {
       success: false,
       data: [],
@@ -388,7 +382,8 @@ export async function getMergedCatalog(
 
   if (mergedCatalog.type !== type) {
     logger.error(
-      `Merged catalog ${id} type mismatch: expected ${mergedCatalog.type}, got ${type}`
+      { id, expected: mergedCatalog.type, got: type },
+      'merged catalog type mismatch'
     );
     return {
       success: false,
@@ -432,8 +427,8 @@ export async function getMergedCatalog(
     skipState = await mergedCatalogCache.get(skipCacheKey);
     if (!skipState) {
       logger.warn(
-        `No cached state for merged catalog ${id} at skip=${requestedSkip}. ` +
-          `Cache may have expired or skip value is invalid.`
+        { id, skip: requestedSkip },
+        'no cached skip state for merged catalog — cache may have expired or skip is invalid'
       );
       return { success: true, data: [], errors: [] };
     }
@@ -445,7 +440,7 @@ export async function getMergedCatalog(
 
   const fetchPromises = mergedCatalog.catalogIds.map(
     async (encodedCatalogId: string) => {
-      logger.debug(`Handling merged catalog source`, { encodedCatalogId });
+      logger.debug({ encodedCatalogId }, 'handling merged catalog source');
       const params = new URLSearchParams(encodedCatalogId);
       const catalogId = params.get('id');
       const catalogType = params.get('type');
@@ -471,7 +466,8 @@ export async function getMergedCatalog(
 
       if (isSearchRequest && !catalogExtras?.some((e) => e.name === 'search')) {
         logger.debug(
-          `Skipping source ${encodedCatalogId} for merged catalog ${mergedCatalog.name}: doesn't support search`
+          { encodedCatalogId, catalog: mergedCatalog.name },
+          'skipping merged catalog source: no search support'
         );
         return {
           encodedCatalogId,
@@ -486,7 +482,8 @@ export async function getMergedCatalog(
         const genreExtra = catalogExtras?.find((e) => e.name === 'genre');
         if (!genreExtra) {
           logger.debug(
-            `Skipping source ${encodedCatalogId} for merged catalog ${mergedCatalog.name}: doesn't support genre extra`
+            { encodedCatalogId, catalog: mergedCatalog.name },
+            'skipping merged catalog source: no genre extra support'
           );
           return {
             encodedCatalogId,
@@ -502,7 +499,12 @@ export async function getMergedCatalog(
           );
           if (!hasGenre) {
             logger.debug(
-              `Skipping source ${encodedCatalogId} for merged catalog ${mergedCatalog.name}: doesn't have genre "${requestedGenre}"`
+              {
+                encodedCatalogId,
+                catalog: mergedCatalog.name,
+                genre: requestedGenre,
+              },
+              'skipping merged catalog source: genre not offered'
             );
             return {
               encodedCatalogId,
@@ -520,7 +522,8 @@ export async function getMergedCatalog(
 
       if (!supportsSkip && sourceSkip > 0) {
         logger.debug(
-          `Skipping source ${encodedCatalogId} for merged catalog ${mergedCatalog.name}: doesn't support skip and already fetched (exhausted)`
+          { encodedCatalogId, catalog: mergedCatalog.name },
+          'skipping merged catalog source: no skip support and already exhausted'
         );
         return {
           encodedCatalogId,
@@ -543,7 +546,12 @@ export async function getMergedCatalog(
         for (const reqExtra of requiredExtras) {
           if (!sourceExtras.has(reqExtra.name)) {
             logger.debug(
-              `Skipping source ${encodedCatalogId} for merged catalog ${mergedCatalog.name}: missing required extra "${reqExtra.name}"`
+              {
+                encodedCatalogId,
+                catalog: mergedCatalog.name,
+                extra: reqExtra.name,
+              },
+              'skipping merged catalog source: missing required extra'
             );
             return {
               encodedCatalogId,
@@ -556,12 +564,15 @@ export async function getMergedCatalog(
         }
       }
 
-      logger.debug('Fetching merged catalog source', {
-        encodedCatalogId,
-        addonInstanceId,
-        catalogType,
-        constructedExtras: sourceExtras.toString(),
-      });
+      logger.debug(
+        {
+          encodedCatalogId,
+          addonInstanceId,
+          catalogType,
+          extras: sourceExtras.toString(),
+        },
+        'fetching merged catalog source'
+      );
 
       const result = await fetchRawCatalogItems(
         ctx,
@@ -573,11 +584,15 @@ export async function getMergedCatalog(
 
       if (!result.success) {
         logger.warn(
-          `Failed to fetch source catalog ${encodedCatalogId} for merged catalog ${mergedCatalog.name} at skip=${requestedSkip}: ${
-            result.error
+          {
+            encodedCatalogId,
+            catalog: mergedCatalog.name,
+            skip: requestedSkip,
+            err: result.error
               ? maskSensitiveInfo(result.error.description || '')
-              : 'Unknown error'
-          }`
+              : 'unknown',
+          },
+          'failed to fetch merged catalog source'
         );
         return {
           encodedCatalogId,
@@ -599,10 +614,12 @@ export async function getMergedCatalog(
   );
 
   logger.debug(
-    `Fetching merged catalog ${mergedCatalog.name} at skip=${requestedSkip}`,
     {
-      upstreamAddons: fetchPromises.length,
-    }
+      catalog: mergedCatalog.name,
+      skip: requestedSkip,
+      sources: fetchPromises.length,
+    },
+    'fetching merged catalog'
   );
 
   const fetchResults = await Promise.all(fetchPromises);
@@ -611,7 +628,10 @@ export async function getMergedCatalog(
   const allFailed =
     nonSkippedResults.length > 0 && nonSkippedResults.every((r) => !r.success);
   if (allFailed) {
-    logger.error(`All sources failed for merged catalog ${mergedCatalog.name}`);
+    logger.error(
+      { catalog: mergedCatalog.name },
+      'all sources failed for merged catalog'
+    );
     return {
       success: false,
       data: [],
@@ -639,7 +659,8 @@ export async function getMergedCatalog(
   );
 
   logger.debug(
-    `Merged catalog ${mergedCatalog.name} collected ${allItems.length} items before deduplication`
+    { catalog: mergedCatalog.name, count: allItems.length },
+    'merged catalog items before deduplication'
   );
 
   allItems = deduplicateMergedCatalog(
@@ -669,8 +690,15 @@ export async function getMergedCatalog(
     );
   }
 
-  logger.info(
-    `Merged catalog ${mergedCatalog.name} fetched ${allItems.length} items at skip=${requestedSkip}, next skip=${nextSkip} in ${getTimeTakenSincePoint(start)}`
+  logger.debug(
+    {
+      catalog: mergedCatalog.name,
+      count: allItems.length,
+      skip: requestedSkip,
+      nextSkip,
+      took: getTimeTakenSincePoint(start),
+    },
+    'merged catalog complete'
   );
 
   return { success: true, data: allItems, errors: [] };
@@ -682,7 +710,7 @@ export async function getCatalog(
   id: string,
   extras?: string
 ): Promise<AIOStreamsResponse<MetaPreview[]>> {
-  logger.info(`Handling catalog request`, { type, id, extras });
+  logger.debug({ type, id, extras }, 'handling catalog request');
 
   if (id.startsWith('aiostreams.merged.')) {
     return getMergedCatalog(ctx, type, id, extras);

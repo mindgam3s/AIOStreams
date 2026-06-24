@@ -7,11 +7,12 @@ import {
 import {
   createLogger,
   DistributedLock,
-  Env,
   formatZodError,
-  maskSensitiveInfo,
 } from '../../utils/index.js';
+
+import { config as appConfig } from '../../config/index.js';
 import { IdType } from '../../utils/id-parser.js';
+import { maskSensitiveInfo } from '../../logging/redact.js';
 
 type TorboxSuccessResponse<T> = {
   success: true;
@@ -61,7 +62,7 @@ const logger = createLogger('torbox-search');
 function isErrorResponse<T>(
   response: TorboxResponse<T>
 ): response is TorboxErrorResponse {
-  return !response.success;
+  return !response.success || 'error' in response;
 }
 
 export class TorboxSearchApiError extends Error {
@@ -75,13 +76,11 @@ export class TorboxSearchApiError extends Error {
   }
 }
 
-const USER_AGENT = Env.DEFAULT_USER_AGENT;
-
 class TorboxSearchApi {
   private readonly baseUrl = 'https://search-api.torbox.app';
-  private static readonly ongoingRequests = new Map<string, Promise<any>>();
-  private static readonly timeout =
-    Env.BUILTIN_TORBOX_SEARCH_SEARCH_API_TIMEOUT;
+  private static get timeout() {
+    return appConfig.builtins.torboxSearch.searchApiTimeout;
+  }
 
   constructor(public readonly apiKey: string) {}
 
@@ -129,7 +128,7 @@ class TorboxSearchApi {
       Accept: 'application/json',
       Authorization: `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
-      'User-Agent': USER_AGENT,
+      'User-Agent': appConfig.http.defaultUserAgent,
     });
 
     let response: Response;
@@ -148,6 +147,16 @@ class TorboxSearchApi {
       throw error;
     }
 
+    const contentType = response.headers.get('Content-Type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await response.text();
+      throw new TorboxSearchApiError(
+        `API returned non-JSON response (${contentType}) of ${response.status} ${response.statusText}: ${text.slice(0, 100)}`,
+        response.status,
+        'INVALID_CONTENT_TYPE'
+      );
+    }
+
     const data = await response.json();
 
     const parsedResponse = TorBoxApiResponseSchema(schema).safeParse(data);
@@ -164,7 +173,7 @@ class TorboxSearchApi {
 
     if (isErrorResponse(result)) {
       throw new TorboxSearchApiError(
-        result.detail || result.message || 'Unknown',
+        result.detail || result.message || result.error || 'Unknown API error',
         response.status,
         result.error
       );

@@ -1,5 +1,3 @@
-'use client';
-
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { cva } from 'class-variance-authority';
@@ -38,7 +36,7 @@ export const ModalAnatomy = defineStyleAnatomy({
   ]),
   footer: cva([
     'UI-Modal__footer',
-    'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2',
+    'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end',
   ]),
   title: cva([
     'UI-Modal__title',

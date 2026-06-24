@@ -13,6 +13,26 @@ const USER_DATA_KEY = 'aiostreams-user-data';
 
 export function applyMigrations(config: any): UserData {
   if (
+    config &&
+    config.addonPassword !== undefined &&
+    config.accessToken === undefined
+  ) {
+    config.accessToken = config.addonPassword;
+  }
+  if (config && config.addonPassword !== undefined) {
+    delete config.addonPassword;
+  }
+  if (
+    config &&
+    config.accessToken !== undefined &&
+    config.accessKey === undefined
+  ) {
+    config.accessKey = config.accessToken;
+  }
+  if (config && config.accessToken !== undefined) {
+    delete config.accessToken;
+  }
+  if (
     config.deduplicator &&
     typeof config.deduplicator.multiGroupBehaviour === 'string'
   ) {
@@ -456,9 +476,11 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(USER_DATA_KEY, JSON.stringify(userData));
   }, [userData]);
 
-  // Effect to apply forced and default values from status
+  const statusApplied = React.useRef(false);
+
   React.useEffect(() => {
-    if (!status) return;
+    if (!status || statusApplied.current) return;
+    statusApplied.current = true;
 
     const forced = status.settings.forced;
     const defaults = status.settings.defaults;

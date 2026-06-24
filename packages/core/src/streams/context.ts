@@ -1,5 +1,5 @@
 import { ParsedStream, UserData } from '../db/schemas.js';
-import { MetadataService, MetadataServiceConfig } from '../metadata/service.js';
+import { MetadataService } from '../metadata/service.js';
 import { Metadata } from '../metadata/utils.js';
 import { ReleaseDate, TMDBMetadata } from '../metadata/tmdb.js';
 import {
@@ -8,7 +8,6 @@ import {
   IdParser,
   ParsedId,
   createLogger,
-  getTimeTakenSincePoint,
   getSeaDexInfoHashes,
   enrichParsedIdWithAnimeEntry,
 } from '../utils/index.js';
@@ -155,12 +154,15 @@ export class StreamContext {
     const queryType = isAnime ? `anime.${type}` : type;
 
     logger.debug(
-      `Created StreamContext for ${id} (${type}) in ${getTimeTakenSincePoint(start)}`,
       {
+        id,
+        type,
         isAnime,
         hasAnimeEntry: !!animeEntry,
         queryType,
-      }
+        took: Date.now() - start,
+      },
+      'stream context created'
     );
 
     return new StreamContext(type, id, userData, {
@@ -219,8 +221,8 @@ export class StreamContext {
           // Calculate relative absolute episode (within current AniDB entry)
           const startingSeason =
             this.animeEntry?.imdb?.seasonNumber ??
-            this.animeEntry?.trakt?.seasonNumber ??
             this.animeEntry?.tvdb?.seasonNumber ??
+            this.animeEntry?.trakt?.seasonNumber ??
             this.animeEntry?.tmdb?.seasonNumber;
 
           if (startingSeason) {
@@ -242,7 +244,19 @@ export class StreamContext {
             }
           }
 
-          if (this.animeEntry?.imdb?.nonImdbEpisodes && absoluteEpisode) {
+          // Adjust for non-IMDB episodes if they exist.
+          const parsedSeasonRecord = seasons.find(
+            (s) => s.number === this.parsedId!.season
+          );
+          const isAlreadyAbsoluteForNonImdb =
+            parsedSeasonRecord !== undefined &&
+            Number(this.parsedId!.episode) > parsedSeasonRecord.episodes;
+
+          if (
+            this.animeEntry?.imdb?.nonImdbEpisodes &&
+            absoluteEpisode &&
+            !isAlreadyAbsoluteForNonImdb
+          ) {
             const nonImdbEpisodesBefore =
               this.animeEntry.imdb.nonImdbEpisodes.filter(
                 (ep: number) => ep < absoluteEpisode!
@@ -272,7 +286,13 @@ export class StreamContext {
 
         return extendedMetadata;
       } catch (error) {
-        logger.warn(`Error fetching metadata for ${this.id}: ${error}`);
+        logger.warn(
+          {
+            id: this.id,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'failed to fetch metadata'
+        );
         return undefined;
       } finally {
         this._metadataFetched = true;
@@ -304,7 +324,13 @@ export class StreamContext {
             apiKey: this.userData.tmdbApiKey,
           }).getReleaseDates(metadata.tmdbId);
         } catch (error) {
-          logger.warn(`Error fetching release dates for ${this.id}: ${error}`);
+          logger.warn(
+            {
+              id: this.id,
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'failed to fetch release dates'
+          );
           return undefined;
         }
       }
@@ -354,20 +380,29 @@ export class StreamContext {
               episodeNumber = fromEpisode + episodeNumber - 1;
             }
           }
-          logger.debug(`Resolved TMDB season/episode for episode details`, {
-            originalSeason,
-            originalEpisode: this.parsedId.episode,
-            tmdbSeason: seasonNumber,
-            tmdbEpisode: episodeNumber,
-            fromEpisode: this.animeEntry.tmdb?.fromEpisode,
-          });
+          logger.debug(
+            {
+              originalSeason,
+              originalEpisode: this.parsedId.episode,
+              tmdbSeason: seasonNumber,
+              tmdbEpisode: episodeNumber,
+              fromEpisode: this.animeEntry.tmdb?.fromEpisode,
+            },
+            'resolved tmdb season/episode for episode details'
+          );
         }
         return await new TMDBMetadata({
           accessToken: this.userData.tmdbAccessToken,
           apiKey: this.userData.tmdbApiKey,
         }).getEpisodeDetails(metadata.tmdbId, seasonNumber, episodeNumber);
       } catch (error) {
-        logger.warn(`Error fetching episode details for ${this.id}: ${error}`);
+        logger.warn(
+          {
+            id: this.id,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'failed to fetch episode details'
+        );
         return undefined;
       }
     })();
@@ -390,7 +425,8 @@ export class StreamContext {
     const anilistIdRaw = this.animeEntry?.mappings?.anilistId;
     if (!anilistIdRaw) {
       logger.debug(
-        `No AniList ID found for ${this.id}, skipping SeaDex lookup`
+        { id: this.id },
+        'no anilist id found, skipping seadex lookup'
       );
       this._seadexFetched = true;
       return;
@@ -402,7 +438,8 @@ export class StreamContext {
         : anilistIdRaw;
     if (isNaN(anilistId)) {
       logger.debug(
-        `Invalid AniList ID ${anilistIdRaw}, skipping SeaDex lookup`
+        { id: this.id, anilistId: anilistIdRaw },
+        'invalid anilist id, skipping seadex lookup'
       );
       this._seadexFetched = true;
       return;
@@ -412,7 +449,13 @@ export class StreamContext {
       try {
         return await getSeaDexInfoHashes(anilistId);
       } catch (error) {
-        logger.warn(`Error fetching SeaDex data for ${this.id}: ${error}`);
+        logger.warn(
+          {
+            id: this.id,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'failed to fetch seadex data'
+        );
         return undefined;
       } finally {
         this._seadexFetched = true;

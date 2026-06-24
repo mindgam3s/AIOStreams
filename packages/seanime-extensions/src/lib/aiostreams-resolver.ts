@@ -55,8 +55,7 @@ export function enrichParsedIdWithAnimeEntry(
     );
     if (mapping) {
       const mappedSeason = mapping.tvdbSeason;
-      const shouldApplyEpisodeOffset =
-        imdbId && ['tt1528406'].includes(imdbId);
+      const shouldApplyEpisodeOffset = imdbId && ['tt1528406'].includes(imdbId);
       if (
         mappedSeason &&
         shouldApplyEpisodeOffset &&
@@ -71,8 +70,8 @@ export function enrichParsedIdWithAnimeEntry(
   if (!parsedId.season) {
     parsedId.season =
       animeEntry.imdb?.seasonNumber ??
-      animeEntry.trakt?.seasonNumber ??
       animeEntry.tvdb?.seasonNumber ??
+      animeEntry.trakt?.seasonNumber ??
       getSeasonFromSynonyms(animeEntry.synonyms ?? []) ??
       animeEntry.tmdb?.seasonNumber ??
       undefined;

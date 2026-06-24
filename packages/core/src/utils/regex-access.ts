@@ -1,13 +1,13 @@
-import z from 'zod';
+﻿import z from 'zod';
 import { UserData } from '../db/schemas.js';
-import { Env } from './env.js';
+import { config } from '../config/index.js';
 import {
   SyncManager,
   type SyncOverride,
   type FetchResult,
   parseSyncedUrl,
 } from './sync.js';
-import { createLogger } from './logger.js';
+import { createLogger } from '../logging/logger.js';
 
 const logger = createLogger('core');
 
@@ -42,21 +42,13 @@ export class RegexAccess {
    */
   private static get manager(): SyncManager<RegexPatternItem> {
     if (!this._instance) {
-      this._whitelistedPatterns =
-        Env.WHITELISTED_REGEX_PATTERNS ?? Env.ALLOWED_REGEX_PATTERNS ?? [];
+      this._whitelistedPatterns = config.userLimits.regex.patterns;
       this._description =
-        Env.WHITELISTED_REGEX_PATTERNS_DESCRIPTION ??
-        Env.ALLOWED_REGEX_PATTERNS_DESCRIPTION;
+        config.userLimits.regex.patternsDescription ?? undefined;
 
-      const configuredUrls =
-        Env.WHITELISTED_REGEX_PATTERNS_URLS ??
-        Env.ALLOWED_REGEX_PATTERNS_URLS ??
-        [];
+      const configuredUrls = config.userLimits.regex.patternsUrls;
 
-      // WHITELISTED_SYNC_REFRESH_INTERVAL (seconds), fallback to old ms value converted to seconds
-      const refreshInterval =
-        Env.WHITELISTED_SYNC_REFRESH_INTERVAL ??
-        Math.floor(Env.ALLOWED_REGEX_PATTERNS_URLS_REFRESH_INTERVAL / 1000);
+      const refreshInterval = config.userLimits.sync.refreshInterval;
 
       this._instance = new SyncManager<RegexPatternItem>({
         cacheKey: 'regex-patterns',
@@ -89,10 +81,13 @@ export class RegexAccess {
   }
 
   /**
-   * Clean up resources.
+   * Clean up resources. Safe to call before `initialise()`: the `manager`
+   * getter would otherwise read from `config.userLimits.regex` and trip the
+   * settings-store guard if shutdown runs before `initialiseConfig()` has
+   * resolved (e.g. SIGTERM during startup).
    */
   public static cleanup(): void {
-    this.manager.cleanup();
+    if (this._instance) this._instance.cleanup();
   }
 
   /**
@@ -148,7 +143,7 @@ export class RegexAccess {
       if (allWhitelisted) return true;
     }
 
-    switch (Env.REGEX_FILTER_ACCESS) {
+    switch (config.userLimits.regex.access) {
       case 'trusted':
         return userData.trusted ?? false;
       case 'all':
@@ -181,9 +176,9 @@ export class RegexAccess {
    * - `none`    → only configured URLs
    */
   public static validateUrls(urls: string[], userData?: UserData): string[] {
+    const access = config.userLimits.regex.access;
     const isUnrestricted =
-      Env.REGEX_FILTER_ACCESS === 'all' ||
-      (Env.REGEX_FILTER_ACCESS === 'trusted' && userData?.trusted);
+      access === 'all' || (access === 'trusted' && userData?.trusted);
 
     if (isUnrestricted) return urls;
 
@@ -250,9 +245,10 @@ export class RegexAccess {
             url,
             items: [] as RegexPatternItem[],
             error:
-              Env.REGEX_FILTER_ACCESS === 'none'
+              config.userLimits.regex.access === 'none'
                 ? 'Regex sync is disabled on this instance.'
-                : Env.REGEX_FILTER_ACCESS === 'trusted' && !userData?.trusted
+                : config.userLimits.regex.access === 'trusted' &&
+                    !userData?.trusted
                   ? 'This URL is not in the allowed list. Contact the instance owner to whitelist it, or ask to be marked as a trusted user.'
                   : 'This URL is not allowed by the server configuration.',
           } satisfies FetchResult<RegexPatternItem>;

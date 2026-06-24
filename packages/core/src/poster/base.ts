@@ -1,8 +1,8 @@
+﻿import { config as appConfig } from '../config/index.js';
 import { Cache } from '../utils/cache.js';
 import { makeRequest } from '../utils/http.js';
-import { Env } from '../utils/env.js';
 import { IdParser } from '../utils/id-parser.js';
-import { AnimeDatabase } from '../utils/anime-database.js';
+import { AnimeDatabase } from '../anime-database/index.js';
 
 export type ParsedPosterId = {
   idType: 'tmdb' | 'imdb' | 'tvdb';
@@ -177,7 +177,7 @@ export abstract class BasePosterService {
     type: string,
     fallbackPoster: string
   ): string {
-    const url = new URL(Env.BASE_URL);
+    const url = new URL(appConfig.bootstrap.baseUrl);
     url.pathname = `/api/v1/posters/${this.redirectPathSegment}`;
     url.searchParams.set('id', itemId);
     url.searchParams.set('type', type);
